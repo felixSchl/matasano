@@ -37,7 +37,22 @@ fn challenge_2() {
 
 #[test]
 fn challenge_3() {
+    let input="1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
+    let chars=('a' as u8)..('z' as u8);
+    let bytes=input.from_hex().unwrap();
 
+    let results=chars
+        .map(|c| {
+            bytes.iter()
+                .map(|b| (b ^ c) as char)
+                .collect::<String>()
+
+        })
+        .collect::<Vec<_>>();
+
+    for result in results {
+        println!("{}", result);
+    }
 }
 
 fn main() {
