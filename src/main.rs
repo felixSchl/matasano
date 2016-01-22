@@ -11,9 +11,11 @@ fn hex_to_base64(str: &str) -> String {
 
 #[test]
 fn challenge_1() {
+    let input="49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
+    let expected="SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
     assert_eq!(
-        hex_to_base64("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"),
-        "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
+        hex_to_base64(input),
+        expected
     )
 }
 
@@ -23,11 +25,19 @@ fn xor(v1: &Vec<u8>, v2: &Vec<u8>) -> Vec<u8> {
 
 #[test]
 fn challenge_2() {
+    let input_1="1c0111001f010100061a024b53535009181c";
+    let input_2="686974207468652062756c6c277320657965";
+    let expected="746865206b696420646f6e277420706c6179";
     assert_eq!(
-        xor(&"1c0111001f010100061a024b53535009181c".from_hex().unwrap(),
-            &"686974207468652062756c6c277320657965".from_hex().unwrap())[..].to_hex(),
-        "746865206b696420646f6e277420706c6179"
+        xor(&input_1.from_hex().unwrap(),
+            &input_2.from_hex().unwrap())[..].to_hex(),
+        expected
     )
+}
+
+#[test]
+fn challenge_3() {
+
 }
 
 fn main() {
