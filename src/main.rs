@@ -35,24 +35,56 @@ fn challenge_2() {
     )
 }
 
+fn calc_score(c: char) -> i32 {
+
+    let lower_alpha = 97u8..123u8;
+    let upper_alpha = 65u8..91u8;
+    let punctuation = [' ', '\'', '"', ',', '.', ':'];
+
+    let byte = c as u8;
+    if (byte >= lower_alpha.start && byte < lower_alpha.end)
+    || (byte >= upper_alpha.start && byte < upper_alpha.end) {
+        100
+    } else if punctuation.contains(&c) {
+        50
+    } else {
+        0
+    }
+}
+
+fn single_byte_xor(bytes: Vec<u8>) -> Option<String> {
+    let chars=32u8..127u8;
+    let mut results = chars.clone()
+        .filter_map(|c| {
+            bytes.iter()
+                .fold(Some(vec![]), |acc, x| acc.and_then(|mut data| {
+                    let xor = x ^ c;
+                    if xor >= chars.start && xor < chars.end {
+                        data.push(xor as char);
+                        Some(data)
+                    } else {
+                        None
+                    }
+                }))
+        })
+        .map(|bytes| {
+            (
+                bytes.iter().cloned().collect::<String>(),
+                bytes.iter().fold(0, |acc, x| acc + calc_score(*x))
+            )
+        })
+        .collect::<Vec<_>>();
+    results.sort_by(|&(_, scoreA), &(_, scoreB)| scoreB.cmp(&scoreA));
+    results.first().map(|&(ref x, _)| x.clone())
+}
+
 #[test]
 fn challenge_3() {
     let input="1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
-    let chars=('a' as u8)..('z' as u8);
-    let bytes=input.from_hex().unwrap();
-
-    let results=chars
-        .map(|c| {
-            bytes.iter()
-                .map(|b| (b ^ c) as char)
-                .collect::<String>()
-
-        })
-        .collect::<Vec<_>>();
-
-    for result in results {
-        println!("{}", result);
-    }
+    assert_eq!(
+        input.from_hex().ok().and_then(single_byte_xor).unwrap(),
+        "Cooking MC's like a pound of bacon"
+    );
 }
 
 fn main() {
