@@ -1,6 +1,6 @@
 extern crate rustc_serialize as serialize;
 use self::serialize::base64::{ ToBase64, STANDARD };
-use self::serialize::hex::{ FromHex, FromHexError };
+use self::serialize::hex::{ FromHex, FromHexError, ToHex };
 use std::cmp::Ordering::{ Equal };
 use super::{ Ngram };
 
@@ -12,7 +12,7 @@ pub fn xor(v1: &Vec<u8>, v2: &Vec<u8>) -> Vec<u8> {
     v1.iter().zip(v2).map(|(&x, &y)| x ^ y).collect::<Vec<u8>>()
 }
 
-pub fn single_byte_xor(bytes: Vec<u8>, ngram: &Ngram) -> Option<Vec<String>> {
+pub fn detect_single_byte_xor(bytes: Vec<u8>, ngram: &Ngram) -> Option<Vec<String>> {
     let mut chars = (0u8..255u8).collect::<Vec<u8>>();
     chars.push(255u8); // ... because the range end is exclusive, and `0..256` does not work.
 
@@ -36,4 +36,12 @@ pub fn single_byte_xor(bytes: Vec<u8>, ngram: &Ngram) -> Option<Vec<String>> {
     Some(results.iter()
         .map(|&(ref x, _)| x.clone())
         .collect::<Vec<String>>())
+}
+
+pub fn repeating_key_xor(key: &str, input: &str) -> String {
+    let hash = input.chars().zip(key.chars().cycle())
+        .map(|(char, byte)| (char as u8) ^ (byte as u8))
+        .collect::<Vec<_>>();
+
+    hash.to_hex()
 }

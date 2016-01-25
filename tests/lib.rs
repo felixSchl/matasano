@@ -6,7 +6,7 @@ use std::cmp::Ordering::{ Equal };
 use std::fs::File;
 use std::io::{ BufReader };
 use std::io::prelude::*;
-use matasano::set_1::{ Ngram, single_byte_xor };
+use matasano::set_1::{ Ngram, detect_single_byte_xor };
 
 #[test]
 fn challenge_1() {
@@ -41,13 +41,14 @@ fn challenge_3() {
 
     assert_eq!(
         input.from_hex().ok()
-            .and_then(|x| single_byte_xor(x, &ngram)).unwrap()
+            .and_then(|x| detect_single_byte_xor(x, &ngram)).unwrap()
             .first().unwrap(),
         "Cooking MC's like a pound of bacon"
     );
 }
 
 #[test]
+#[ignore]
 fn challenge_4() {
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
 
@@ -59,7 +60,7 @@ fn challenge_4() {
         .filter_map(|l| l.ok())
         .filter(|l| l.len() == 60)
         .filter_map(|l| l.from_hex().ok())
-        .filter_map(|l| single_byte_xor(l, &ngram))
+        .filter_map(|l| detect_single_byte_xor(l, &ngram))
         .filter_map(|xs| xs.first().map(|x| x.clone()))
         .map(|ref x| (x.clone(), ngram.score(&x)))
         .collect::<Vec<_>>();
@@ -77,3 +78,15 @@ fn challenge_4() {
     assert_eq!(results.first().unwrap(), "Now that the party is jumping\n");
 }
 
+#[test]
+fn challenge_5() {
+    let key = "ICE";
+    let input =
+       "Burning 'em, if you ain't quick and nimble\n\
+        I go crazy when I hear a cymbal";
+    assert_eq!(
+        set_1::repeating_key_xor(key, input),
+            "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272\
+            a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
+    )
+}
