@@ -90,3 +90,14 @@ fn challenge_5() {
             a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
     )
 }
+
+#[test]
+fn challenge_6() {
+    assert_eq!(
+        set_1::hamming_distance(
+            "this is a test",
+            "wokka wokka!!!"
+        ),
+        37
+    )
+}
