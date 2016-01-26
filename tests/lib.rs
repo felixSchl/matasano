@@ -99,5 +99,23 @@ fn challenge_6() {
             "wokka wokka!!!"
         ),
         37
-    )
+    );
+
+    let mut file = File::open("./fixtures/set1_challenge6.txt").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+
+    for keysize in 2..41 {
+        let block_1 = contents.chars()
+            .take(keysize)
+            .collect::<String>();
+        let block_2 = contents.chars()
+            .skip(keysize)
+            .take(keysize)
+            .collect::<String>();
+        let dist = set_1::hamming_distance(&block_1, &block_2);
+        let norm_dist = (dist as f32) / (keysize as f32);
+
+        println!("{}", norm_dist);
+    }
 }
