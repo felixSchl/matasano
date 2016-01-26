@@ -101,11 +101,13 @@ fn challenge_6() {
         37
     );
 
+    let ngram = Ngram::from_file("./resources/english_trigrams.txt");
     let mut file = File::open("./fixtures/set1_challenge6.txt").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
 
-    for keysize in 2..41 {
+    // calculate the scores for various key lengths
+    let mut keysize_scores = (2..41).map(|keysize| {
         let block_1 = contents.chars()
             .take(keysize)
             .collect::<String>();
@@ -115,7 +117,66 @@ fn challenge_6() {
             .collect::<String>();
         let dist = set_1::hamming_distance(&block_1, &block_2);
         let norm_dist = (dist as f32) / (keysize as f32);
+        (keysize, norm_dist)
+    }).collect::<Vec<_>>();
 
-        println!("{}", norm_dist);
-    }
+    keysize_scores.sort_by(|&(_, a), &(_, b)| {
+        a.partial_cmp(&b).unwrap_or(Equal)
+    });
+
+    // select the most likely key size
+    let mut blocks = keysize_scores.iter()
+        .map(|&(a, _)| a)
+        .take(3 /* arbitrary */)
+        .collect::<Vec<_>>();
+
+    blocks.dedup();
+
+    // break the ciphertext into blocks of `keylen`
+    let blocks = blocks.iter()
+        .map(|keylen| {
+            let blocks = contents.chars()
+                .fold(vec![] as Vec<Vec<char>>, |mut acc, x| {
+                    // XXX: I think https://github.com/rust-lang/rfcs/issues/811
+                    //      will allow to match on `app.first_mut`.
+                    if acc.len() == 0 || acc.last().unwrap().len() >= *keylen {
+                        acc.push(Vec::new());
+                    }
+                    acc.last_mut().unwrap().push(x.clone());
+                    acc
+                });
+            (keylen, blocks)
+        })
+        .collect::<Vec<_>>();
+
+    // transpose the blocks
+    let blocks = blocks.iter()
+        .map(|&(keylen, ref blocks)| {
+            (0..*keylen).map(move |i| {
+                blocks.iter().filter_map(move |ref block| {
+                    block.get(i)
+                }).collect::<Vec<_>>()
+            }).collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+
+    // solve the single-byte-xor for each block
+    let blocks = blocks.iter()
+        .map(|blocks| {
+            blocks.iter()
+                .filter_map(|block| {
+                    println!("solving block: {:?}", block);
+                    detect_single_byte_xor(
+                        block.iter().map(|c| **c as u8).collect::<Vec<_>>(),
+                        &ngram
+                    )
+                }).collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+
+    println!("{:?}", blocks);
+
+    // for (keylen, blocks) in blocks {
+    //     for block in blocks {
+    //         println!("{}: {:?}", keylen, block);
+    //     }
+    // }
 }
