@@ -7,6 +7,9 @@ use std::fs::File;
 use std::io::{ BufReader };
 use std::io::prelude::*;
 use matasano::set_1::{ Ngram, detect_single_byte_xor };
+use std::thread;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn challenge_1() {
@@ -135,14 +138,14 @@ fn challenge_6() {
     // break the ciphertext into blocks of `keylen`
     let blocks = blocks.iter()
         .map(|keylen| {
-            let blocks = contents.chars()
-                .fold(vec![] as Vec<Vec<char>>, |mut acc, x| {
-                    // XXX: I think https://github.com/rust-lang/rfcs/issues/811
-                    //      will allow to match on `app.first_mut`.
-                    if acc.len() == 0 || acc.last().unwrap().len() >= *keylen {
-                        acc.push(Vec::new());
-                    }
-                    acc.last_mut().unwrap().push(x.clone());
+            let blocks = contents
+                .chars()
+                .collect::<Vec<_>>()
+                .chunks(*keylen)
+                .fold(Vec::new() as Vec<Vec<char>>, |mut acc, cs| {
+                    let mut block = Vec::new();
+                    block.extend_from_slice(cs);
+                    acc.push(block);
                     acc
                 });
             (keylen, blocks)
@@ -159,24 +162,20 @@ fn challenge_6() {
             }).collect::<Vec<_>>()
         }).collect::<Vec<_>>();
 
-    // solve the single-byte-xor for each block
-    let blocks = blocks.iter()
-        .map(|blocks| {
-            blocks.iter()
-                .filter_map(|block| {
-                    println!("solving block: {:?}", block);
-                    detect_single_byte_xor(
-                        block.iter().map(|c| **c as u8).collect::<Vec<_>>(),
-                        &ngram
-                    )
-                }).collect::<Vec<_>>()
-        }).collect::<Vec<_>>();
+    // // solve the single-byte-xor for each block
+    for blocks in blocks {
+        let (tx, rx) = mpsc::channel::<String>();
 
-    println!("{:?}", blocks);
+        for block in blocks.clone() {
+            let tx = tx.clone();
+            let data = Arc::new(Mutex::new(block));
+            thread::spawn(move || {
+                tx.send(String::from("foo"));
+            });
+        }
 
-    // for (keylen, blocks) in blocks {
-    //     for block in blocks {
-    //         println!("{}: {:?}", keylen, block);
-    //     }
-    // }
+        for _ in 0..blocks.len() {
+            println!("received: {}", rx.recv().unwrap());
+        }
+    }
 }
