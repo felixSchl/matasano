@@ -156,26 +156,23 @@ fn challenge_6() {
     let blocks = blocks.iter()
         .map(|&(keylen, ref blocks)| {
             (0..*keylen).map(move |i| {
-                blocks.iter().filter_map(move |ref block| {
-                    block.get(i)
-                }).collect::<Vec<_>>()
+                blocks.iter()
+                    .filter_map(move |ref block| block.get(i))
+                    .map(|c| c.to_owned() as u8)
+                    .collect::<Vec<u8>>()
             }).collect::<Vec<_>>()
         }).collect::<Vec<_>>();
 
-    // // solve the single-byte-xor for each block
-    for blocks in blocks {
-        let (tx, rx) = mpsc::channel::<String>();
-
-        for block in blocks.clone() {
-            let tx = tx.clone();
-            let data = Arc::new(Mutex::new(block));
-            thread::spawn(move || {
-                tx.send(String::from("foo"));
-            });
-        }
-
-        for _ in 0..blocks.len() {
-            println!("received: {}", rx.recv().unwrap());
-        }
+    let mut handles = Vec::<thread::JoinHandle<String>>::new();
+    for block in blocks.iter() {
+        let block = block.to_vec();
+        handles.push(thread::spawn(move || {
+            for bytes in block {
+                let x = detect_single_byte_xor(bytes, &ngram);
+            }
+            "foo".to_string()
+        }));
     }
+
+    // println!("{:?}", blocks);
 }
