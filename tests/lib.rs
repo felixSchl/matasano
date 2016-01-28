@@ -9,7 +9,7 @@ use std::io::prelude::*;
 use matasano::set_1::{ Ngram, detect_single_byte_xor };
 use std::thread;
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{ Arc };
 
 #[test]
 fn challenge_1() {
@@ -44,7 +44,7 @@ fn challenge_3() {
 
     assert_eq!(
         input.from_hex().ok()
-            .and_then(|x| detect_single_byte_xor(x, &ngram)).unwrap()
+            .and_then(|x| detect_single_byte_xor(&x, &ngram)).unwrap()
             .first().unwrap(),
         "Cooking MC's like a pound of bacon"
     );
@@ -63,7 +63,7 @@ fn challenge_4() {
         .filter_map(|l| l.ok())
         .filter(|l| l.len() == 60)
         .filter_map(|l| l.from_hex().ok())
-        .filter_map(|l| detect_single_byte_xor(l, &ngram))
+        .filter_map(|l| detect_single_byte_xor(&l, &ngram))
         .filter_map(|xs| xs.first().map(|x| x.clone()))
         .map(|ref x| (x.clone(), ngram.score(&x)))
         .collect::<Vec<_>>();
@@ -95,6 +95,7 @@ fn challenge_5() {
 }
 
 #[test]
+#[ignore]
 fn challenge_6() {
     assert_eq!(
         set_1::hamming_distance(
@@ -163,16 +164,35 @@ fn challenge_6() {
             }).collect::<Vec<_>>()
         }).collect::<Vec<_>>();
 
-    let mut handles = Vec::<thread::JoinHandle<String>>::new();
-    for block in blocks.iter() {
-        let block = block.to_vec();
-        handles.push(thread::spawn(move || {
-            for bytes in block {
-                let x = detect_single_byte_xor(bytes, &ngram);
-            }
-            "foo".to_string()
-        }));
-    }
+    let ngram = Arc::new(ngram);
+    let blocks = {
+        let mut blocks_handles = Vec::<thread::JoinHandle<Vec<Option<Vec<String>>>>>::new();
+        for block in blocks {
+            let block = block.to_vec();
+            let ngram = ngram.clone();
+            blocks_handles.push(thread::spawn(move || {
+                let mut xor_handles = Vec::<thread::JoinHandle<Option<Vec<String>>>>::new();
+                for bytes in block {
+                    let ngram = ngram.clone();
+                    let bytes = Arc::new(bytes);
+                    xor_handles.push(thread::spawn(move || {
+                        println!("solving single byte xor");
+                        let x = detect_single_byte_xor(&bytes, &ngram);
+                        println!("CRACKED IT");
+                        x
+                    }))
+                }
 
-    // println!("{:?}", blocks);
+                xor_handles.into_iter()
+                    .map(|h| h.join())
+                    .map(|r| r.unwrap())
+                    .collect::<Vec<_>>()
+            }))
+        }
+
+        blocks_handles.into_iter()
+            .map(|h| h.join())
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>()
+    };
 }
