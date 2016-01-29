@@ -4,11 +4,12 @@ extern crate rustc_serialize as serialize;
 extern crate simple_parallel;
 use self::matasano::set_1;
 use self::serialize::hex::{ FromHex, ToHex };
+use self::serialize::base64::{ FromBase64 };
 use std::cmp::Ordering::{ Equal };
 use std::fs::File;
 use std::io::{ BufReader };
 use std::io::prelude::*;
-use matasano::set_1::{ Ngram, detect_single_byte_xor };
+use matasano::set_1::{ Ngram, detect_single_byte_xor, repeating_key_xor };
 use std::thread;
 use std::sync::mpsc;
 use std::sync::{ Arc };
@@ -47,8 +48,8 @@ fn challenge_3() {
 
     assert_eq!(
         input.from_hex().ok()
-            .and_then(|x| detect_single_byte_xor(&x, &ngram, None)).unwrap()
-            .first().unwrap(),
+            .and_then(|x| detect_single_byte_xor(&x, &ngram, None).first().cloned())
+            .unwrap(),
         "Cooking MC's like a pound of bacon"
     );
 }
@@ -66,7 +67,7 @@ fn challenge_4() {
         .filter_map(|l| l.ok())
         .filter(|l| l.len() == 60)
         .filter_map(|l| l.from_hex().ok())
-        .filter_map(|l| detect_single_byte_xor(&l, &ngram, None))
+        .map(|l| detect_single_byte_xor(&l, &ngram, None))
         .filter_map(|xs| xs.first().map(|x| x.clone()))
         .map(|ref x| (x.clone(), ngram.score(&x)))
         .collect::<Vec<_>>();
@@ -112,6 +113,12 @@ fn challenge_6() {
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
 
+    // XXX: Should avoid making this a string first, just operate on u8s!
+    let contents = contents.from_base64().unwrap()
+        .into_iter()
+        .map(|b| b as char)
+        .collect::<String>();
+
     // calculate the scores for various key lengths
     let mut keysize_scores = (2..41).map(|keysize| {
         let block_1 = contents.chars()
@@ -131,35 +138,37 @@ fn challenge_6() {
     });
 
     // select the most likely key size
-    let mut blocks = keysize_scores.iter()
+    let mut keysizes = keysize_scores.iter()
         .map(|&(a, _)| a)
         .take(3 /* arbitrary */)
         .collect::<Vec<_>>();
 
-    blocks.dedup();
+    keysizes.dedup();
 
-    // break the ciphertext into blocks of `keylen`
-    let blocks = blocks.iter()
-        .map(|keylen| {
-            let blocks = contents
+    // break the ciphertext into blocks of `keysize`
+    let blocks = keysizes.iter()
+        .map(|keysize| {
+            println!("chunking up contents into chunks of keysize {}", keysize);
+            let chunks = contents
                 .chars()
                 .collect::<Vec<_>>()
-                .chunks(*keylen)
+                .chunks(*keysize)
                 .fold(Vec::new() as Vec<Vec<char>>, |mut acc, cs| {
                     let mut block = Vec::new();
                     block.extend_from_slice(cs);
                     acc.push(block);
                     acc
                 });
-            (keylen, blocks)
+            println!("got {} chunks for keysize {}", chunks.len(), keysize);
+            (keysize, chunks)
         })
         .collect::<Vec<_>>();
 
     // transpose the blocks
     let blocks = blocks.iter()
-        .map(|&(keylen, ref blocks)| {
-            (0..*keylen).map(move |i| {
-                blocks.iter()
+        .map(|&(keysize, ref chunks)| {
+            (0..*keysize).map(move |i| {
+                chunks.iter()
                     .filter_map(move |ref block| block.get(i))
                     .map(|c| c.to_owned() as u8)
                     .collect::<Vec<u8>>()
@@ -167,17 +176,32 @@ fn challenge_6() {
         }).collect::<Vec<_>>();
 
     // solve the single-byte-xor for each block
-    let mut pool = Pool::new(8);
+    let mut pool = Pool::new(4);
     let blocks = blocks.iter()
-        .map(|blocks| {
-            blocks.into_iter()
+        .map(|chunks| {
+            chunks.into_iter()
                 .filter_map(|bytes| {
-                    println!("solving bytes: {:?}", bytes.len());
                     detect_single_byte_xor(
                         &bytes.iter().map(|c| *c as u8).collect::<Vec<_>>(),
                         &ngram,
                         Some(&mut pool)
-                    )
-                }).collect::<Vec<_>>()
-        }).collect::<Vec<_>>();
+                    ).first().cloned()
+                })
+                .collect::<Vec<_>>()
+                [..].concat()
+        })
+        .collect::<Vec<_>>();
+
+    for key in blocks {
+        println!("keysize: {}", key.len());
+        println!(
+            "solved: {}",
+            repeating_key_xor(&key, &contents)
+                .from_hex()
+                .unwrap()
+                .into_iter()
+                .map(|b| b as char)
+                .collect::<String>()
+        );
+    }
 }

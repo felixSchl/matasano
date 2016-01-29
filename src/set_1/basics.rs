@@ -21,7 +21,7 @@ pub fn detect_single_byte_xor(
     bytes: &Vec<u8>,
     ngram: &Ngram,
     pool:  Option<&mut Pool>
-    ) -> Option<Vec<String>>
+    ) -> Vec<String>
 {
     let mut chars = (0u8..255u8).collect::<Vec<u8>>();
     chars.push(255u8); // ... because the range end is exclusive, and `0..256` does not work.
@@ -45,9 +45,9 @@ pub fn detect_single_byte_xor(
         score_b.partial_cmp(&score_a).unwrap_or(Equal)
     });
 
-    Some(results.iter()
+    results.iter()
         .map(|&(ref x, _)| x.clone())
-        .collect::<Vec<String>>())
+        .collect::<Vec<String>>()
 }
 
 pub fn repeating_key_xor(key: &str, input: &str) -> String {
