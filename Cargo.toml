@@ -7,3 +7,5 @@ authors = ["Felix Schlitter <felixschlitter@gmail.com>"]
 regex = "0.1.48"
 rustc-serialize = "0.3"
 bit-vec = "0.4.3"
+crossbeam = "0.1.5"
+simple_parallel = "0.3"

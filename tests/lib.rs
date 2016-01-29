@@ -1,5 +1,7 @@
 extern crate matasano;
+extern crate crossbeam;
 extern crate rustc_serialize as serialize;
+extern crate simple_parallel;
 use self::matasano::set_1;
 use self::serialize::hex::{ FromHex, ToHex };
 use std::cmp::Ordering::{ Equal };
@@ -10,6 +12,7 @@ use matasano::set_1::{ Ngram, detect_single_byte_xor };
 use std::thread;
 use std::sync::mpsc;
 use std::sync::{ Arc };
+use self::simple_parallel::Pool;
 
 #[test]
 fn challenge_1() {
@@ -44,7 +47,7 @@ fn challenge_3() {
 
     assert_eq!(
         input.from_hex().ok()
-            .and_then(|x| detect_single_byte_xor(&x, &ngram)).unwrap()
+            .and_then(|x| detect_single_byte_xor(&x, &ngram, None)).unwrap()
             .first().unwrap(),
         "Cooking MC's like a pound of bacon"
     );
@@ -63,7 +66,7 @@ fn challenge_4() {
         .filter_map(|l| l.ok())
         .filter(|l| l.len() == 60)
         .filter_map(|l| l.from_hex().ok())
-        .filter_map(|l| detect_single_byte_xor(&l, &ngram))
+        .filter_map(|l| detect_single_byte_xor(&l, &ngram, None))
         .filter_map(|xs| xs.first().map(|x| x.clone()))
         .map(|ref x| (x.clone(), ngram.score(&x)))
         .collect::<Vec<_>>();
@@ -95,7 +98,6 @@ fn challenge_5() {
 }
 
 #[test]
-#[ignore]
 fn challenge_6() {
     assert_eq!(
         set_1::hamming_distance(
@@ -164,35 +166,18 @@ fn challenge_6() {
             }).collect::<Vec<_>>()
         }).collect::<Vec<_>>();
 
-    let ngram = Arc::new(ngram);
-    let blocks = {
-        let mut blocks_handles = Vec::<thread::JoinHandle<Vec<Option<Vec<String>>>>>::new();
-        for block in blocks {
-            let block = block.to_vec();
-            let ngram = ngram.clone();
-            blocks_handles.push(thread::spawn(move || {
-                let mut xor_handles = Vec::<thread::JoinHandle<Option<Vec<String>>>>::new();
-                for bytes in block {
-                    let ngram = ngram.clone();
-                    let bytes = Arc::new(bytes);
-                    xor_handles.push(thread::spawn(move || {
-                        println!("solving single byte xor");
-                        let x = detect_single_byte_xor(&bytes, &ngram);
-                        println!("CRACKED IT");
-                        x
-                    }))
-                }
-
-                xor_handles.into_iter()
-                    .map(|h| h.join())
-                    .map(|r| r.unwrap())
-                    .collect::<Vec<_>>()
-            }))
-        }
-
-        blocks_handles.into_iter()
-            .map(|h| h.join())
-            .map(|r| r.unwrap())
-            .collect::<Vec<_>>()
-    };
+    // solve the single-byte-xor for each block
+    let mut pool = Pool::new(8);
+    let blocks = blocks.iter()
+        .map(|blocks| {
+            blocks.into_iter()
+                .filter_map(|bytes| {
+                    println!("solving bytes: {:?}", bytes.len());
+                    detect_single_byte_xor(
+                        &bytes.iter().map(|c| *c as u8).collect::<Vec<_>>(),
+                        &ngram,
+                        Some(&mut pool)
+                    )
+                }).collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
 }
