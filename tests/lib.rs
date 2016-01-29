@@ -49,17 +49,16 @@ fn challenge_3() {
     assert_eq!(
         input.from_hex().ok()
             .and_then(|x| detect_single_byte_xor(&x, &ngram, None).first().cloned())
-            .unwrap(),
+            .unwrap().1,
         "Cooking MC's like a pound of bacon"
     );
 }
 
 #[test]
-#[ignore]
 fn challenge_4() {
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
 
-    let f = File::open("./fixtures/set1_challenge4.txt").unwrap();
+    let f = File::open("./fixtures/set_1_challenge_4.txt").unwrap();
     let f = BufReader::new(f);
 
     // select the best single-byte-xor for each input
@@ -68,7 +67,8 @@ fn challenge_4() {
         .filter(|l| l.len() == 60)
         .filter_map(|l| l.from_hex().ok())
         .map(|l| detect_single_byte_xor(&l, &ngram, None))
-        .filter_map(|xs| xs.first().map(|x| x.clone()))
+        .filter_map(|xs| xs.first().cloned())
+        .map(|x| x.1)
         .map(|ref x| (x.clone(), ngram.score(&x)))
         .collect::<Vec<_>>();
 
@@ -92,9 +92,13 @@ fn challenge_5() {
        "Burning 'em, if you ain't quick and nimble\n\
         I go crazy when I hear a cymbal";
     assert_eq!(
-        set_1::repeating_key_xor(key, input),
-            "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272\
-            a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
+        set_1::repeating_key_xor(key, input)
+            .chars()
+            .map(|c| c as u8)
+            .collect::<Vec<u8>>()
+            .to_hex(),
+        "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272\
+        a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
     )
 }
 
@@ -109,9 +113,20 @@ fn challenge_6() {
     );
 
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
-    let mut file = File::open("./fixtures/set1_challenge6.txt").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
+
+    let contents = {
+        let mut file = File::open("./fixtures/set_1_challenge_6.txt").unwrap();
+        let mut contents =  String::new();
+        file.read_to_string(&mut contents).unwrap();
+        contents
+    };
+
+    let solution = {
+        let mut file = File::open("./fixtures/set_1_challenge_6_solution.txt").unwrap();
+        let mut contents =  String::new();
+        file.read_to_string(&mut contents).unwrap();
+        contents
+    };
 
     // XXX: Should avoid making this a string first, just operate on u8s!
     let contents = contents.from_base64().unwrap()
@@ -121,15 +136,28 @@ fn challenge_6() {
 
     // calculate the scores for various key lengths
     let mut keysize_scores = (2..41).map(|keysize| {
-        let block_1 = contents.chars()
-            .take(keysize)
-            .collect::<String>();
-        let block_2 = contents.chars()
-            .skip(keysize)
-            .take(keysize)
-            .collect::<String>();
-        let dist = set_1::hamming_distance(&block_1, &block_2);
-        let norm_dist = (dist as f32) / (keysize as f32);
+        let chars = contents.chars()
+            .map(|c| c as u8)
+            .collect::<Vec<_>>();
+
+        let chunks = chars.chunks(keysize*2);
+        let num_chunks = chunks.len();
+
+        let dist = chunks.map(|chunk| {
+            let block_1 = chunk.iter()
+                .map(|c| *c as char)
+                .take(keysize)
+                .collect::<String>();
+            let block_2 = chunk.iter()
+                .map(|c| *c as char)
+                .skip(keysize)
+                .take(keysize)
+                .collect::<String>();
+            set_1::hamming_distance(&block_1, &block_2)
+        }).fold(0, |sum, i| sum + i);
+
+        let norm_dist = (dist as f32) / ((keysize * num_chunks) as f32);
+
         (keysize, norm_dist)
     }).collect::<Vec<_>>();
 
@@ -140,26 +168,23 @@ fn challenge_6() {
     // select the most likely key size
     let mut keysizes = keysize_scores.iter()
         .map(|&(a, _)| a)
-        .take(3 /* arbitrary */)
+        .skip(0)
+        .take(3)
         .collect::<Vec<_>>();
-
-    keysizes.dedup();
 
     // break the ciphertext into blocks of `keysize`
     let blocks = keysizes.iter()
         .map(|keysize| {
-            println!("chunking up contents into chunks of keysize {}", keysize);
-            let chunks = contents
-                .chars()
+            let chunks = contents.chars()
+                .map(|c| c as u8)
                 .collect::<Vec<_>>()
                 .chunks(*keysize)
-                .fold(Vec::new() as Vec<Vec<char>>, |mut acc, cs| {
+                .fold(Vec::new() as Vec<Vec<u8>>, |mut acc, cs| {
                     let mut block = Vec::new();
                     block.extend_from_slice(cs);
                     acc.push(block);
                     acc
                 });
-            println!("got {} chunks for keysize {}", chunks.len(), keysize);
             (keysize, chunks)
         })
         .collect::<Vec<_>>();
@@ -167,41 +192,49 @@ fn challenge_6() {
     // transpose the blocks
     let blocks = blocks.iter()
         .map(|&(keysize, ref chunks)| {
-            (0..*keysize).map(move |i| {
+            (0..*keysize).map(|i| {
                 chunks.iter()
-                    .filter_map(move |ref block| block.get(i))
+                    .filter_map(|block| block.get(i))
                     .map(|c| c.to_owned() as u8)
                     .collect::<Vec<u8>>()
             }).collect::<Vec<_>>()
         }).collect::<Vec<_>>();
 
     // solve the single-byte-xor for each block
-    let mut pool = Pool::new(4);
-    let blocks = blocks.iter()
+    let mut pool = Pool::new(8);
+    let keys = blocks.iter()
         .map(|chunks| {
             chunks.into_iter()
                 .filter_map(|bytes| {
-                    detect_single_byte_xor(
+                    let keys = detect_single_byte_xor(
                         &bytes.iter().map(|c| *c as u8).collect::<Vec<_>>(),
                         &ngram,
                         Some(&mut pool)
-                    ).first().cloned()
+                    );
+
+                    let keys = keys.iter()
+                        .map(|&(c, _)| c)
+                        .collect::<Vec<char>>();
+
+                    keys.first().cloned()
                 })
-                .collect::<Vec<_>>()
-                [..].concat()
+                .collect::<String>()
         })
         .collect::<Vec<_>>();
 
-    for key in blocks {
-        println!("keysize: {}", key.len());
-        println!(
-            "solved: {}",
-            repeating_key_xor(&key, &contents)
-                .from_hex()
-                .unwrap()
-                .into_iter()
-                .map(|b| b as char)
-                .collect::<String>()
-        );
-    }
+    let mut answers = keys.iter()
+        .map(|key| repeating_key_xor(&key, &contents))
+        .map(|x| (x.clone(), ngram.score(&x)))
+        .collect::<Vec<_>>();
+
+    answers.sort_by(|&(_, score_a), &(_, score_b)| {
+        score_b.partial_cmp(&score_a).unwrap_or(Equal)
+    });
+
+    let answers = answers.into_iter().map(|(x, _)| x).collect::<Vec<_>>();
+
+    assert_eq!(
+        answers.first().unwrap(),
+        &solution
+    );
 }
