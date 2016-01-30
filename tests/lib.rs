@@ -1,3 +1,4 @@
+extern crate openssl;
 extern crate matasano;
 extern crate crossbeam;
 extern crate rustc_serialize as serialize;
@@ -5,13 +6,14 @@ extern crate simple_parallel;
 use self::matasano::set_1;
 use self::serialize::hex::{ FromHex, ToHex };
 use self::serialize::base64::{ FromBase64 };
+use self::simple_parallel::Pool;
+use self::openssl::crypto::symm as crypto;
 use std::cmp::Ordering::{ Equal };
 use std::fs::File;
 use std::io::{ BufReader };
 use std::io::prelude::*;
-use matasano::set_1::{ Ngram, detect_single_byte_xor, repeating_key_xor };
-use self::simple_parallel::Pool;
 use std::str;
+use matasano::set_1::{ Ngram, detect_single_byte_xor, repeating_key_xor };
 
 fn str_to_u8_vec(input: &str) -> Vec<u8> {
     input.chars().map(|c| c as u8).collect::<Vec<u8>>()
@@ -71,6 +73,7 @@ fn challenge_4() {
     let f = BufReader::new(f);
 
     // select the best single-byte-xor for each input
+    // XXX: Consider doing this in parallel (!)
     let mut candidates = f.lines()
         .filter_map(|l| l.ok())
         .filter(|l| l.len() == 60)
@@ -233,6 +236,29 @@ fn challenge_6() {
 
     assert_eq!(
         &u8_vec_to_str(answer),
+        &solution
+    );
+}
+
+#[test]
+fn challenge_7() {
+    let key = "YELLOW SUBMARINE";
+    let solution = unsafe_read_file("./fixtures/set_1_challenge_7_solution.txt");
+    let cipher_text = unsafe_read_file("./fixtures/set_1_challenge_7.txt");
+    let cipher_text = cipher_text.from_base64().unwrap();
+    let cr = crypto::Crypter::new(crypto::Type::AES_128_ECB);
+
+    cr.init(
+        crypto::Mode::Decrypt,
+        &str_to_u8_vec(&key)[..],
+        &[]
+    );
+
+    let mut p1 = cr.update(&cipher_text[..]);
+    p1.extend(cr.finalize().into_iter());
+
+    assert_eq!(
+        &u8_vec_to_str(&p1.to_vec()),
         &solution
     );
 }
