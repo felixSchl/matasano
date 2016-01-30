@@ -10,10 +10,16 @@ use std::fs::File;
 use std::io::{ BufReader };
 use std::io::prelude::*;
 use matasano::set_1::{ Ngram, detect_single_byte_xor, repeating_key_xor };
-use std::thread;
-use std::sync::mpsc;
-use std::sync::{ Arc };
 use self::simple_parallel::Pool;
+use std::str;
+
+fn str_to_u8_vec(input: &str) -> Vec<u8> {
+    input.chars().map(|c| c as u8).collect::<Vec<u8>>()
+}
+
+fn u8_vec_to_str(input: &Vec<u8>) -> String {
+    input.into_iter().map(|b| *b as char).collect::<String>()
+}
 
 #[test]
 fn challenge_1() {
@@ -45,11 +51,13 @@ fn challenge_2() {
 fn challenge_3() {
     let input="1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
+    let input = input.from_hex().unwrap();
+    let result = detect_single_byte_xor(&input, &ngram, None);
+    let result = result.first().cloned().unwrap().1;
+    let result = str::from_utf8(&result).unwrap();
 
     assert_eq!(
-        input.from_hex().ok()
-            .and_then(|x| detect_single_byte_xor(&x, &ngram, None).first().cloned())
-            .unwrap().1,
+        result,
         "Cooking MC's like a pound of bacon"
     );
 }
@@ -57,6 +65,7 @@ fn challenge_3() {
 #[test]
 fn challenge_4() {
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
+    let mut pool = Pool::new(8);
 
     let f = File::open("./fixtures/set_1_challenge_4.txt").unwrap();
     let f = BufReader::new(f);
@@ -66,7 +75,7 @@ fn challenge_4() {
         .filter_map(|l| l.ok())
         .filter(|l| l.len() == 60)
         .filter_map(|l| l.from_hex().ok())
-        .map(|l| detect_single_byte_xor(&l, &ngram, None))
+        .map(|l| detect_single_byte_xor(&l, &ngram, Some(&mut pool)))
         .filter_map(|xs| xs.first().cloned())
         .map(|x| x.1)
         .map(|ref x| (x.clone(), ngram.score(&x)))
@@ -80,9 +89,12 @@ fn challenge_4() {
     // select the winner
     let results = candidates.iter()
         .map(|&(ref x, _)| x.clone())
-        .collect::<Vec<String>>();
+        .collect::<Vec<Vec<u8>>>();
 
-    assert_eq!(results.first().unwrap(), "Now that the party is jumping\n");
+    let result = results.first().unwrap();
+    let result = str::from_utf8(&result).unwrap();
+
+    assert_eq!(result, "Now that the party is jumping\n");
 }
 
 #[test]
@@ -92,14 +104,20 @@ fn challenge_5() {
        "Burning 'em, if you ain't quick and nimble\n\
         I go crazy when I hear a cymbal";
     assert_eq!(
-        set_1::repeating_key_xor(key, input)
-            .chars()
-            .map(|c| c as u8)
-            .collect::<Vec<u8>>()
-            .to_hex(),
+        set_1::repeating_key_xor(
+            &str_to_u8_vec(key),
+            &str_to_u8_vec(input)
+        ).to_hex(),
         "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272\
         a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
     )
+}
+
+fn unsafe_read_file(path: &str) -> String {
+    let mut file = File::open(path).unwrap();
+    let mut contents =  String::new();
+    file.read_to_string(&mut contents).unwrap();
+    contents
 }
 
 #[test]
@@ -113,34 +131,16 @@ fn challenge_6() {
     );
 
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
-
-    let contents = {
-        let mut file = File::open("./fixtures/set_1_challenge_6.txt").unwrap();
-        let mut contents =  String::new();
-        file.read_to_string(&mut contents).unwrap();
-        contents
-    };
-
-    let solution = {
-        let mut file = File::open("./fixtures/set_1_challenge_6_solution.txt").unwrap();
-        let mut contents =  String::new();
-        file.read_to_string(&mut contents).unwrap();
-        contents
-    };
+    let cipher_text = unsafe_read_file("./fixtures/set_1_challenge_6.txt");
+    let solution = unsafe_read_file("./fixtures/set_1_challenge_6_solution.txt");
 
     // XXX: Should avoid making this a string first, just operate on u8s!
-    let contents = contents.from_base64().unwrap()
-        .into_iter()
-        .map(|b| b as char)
-        .collect::<String>();
+    let cipher_text = cipher_text.from_base64().unwrap();
 
     // calculate the scores for various key lengths
     let mut keysize_scores = (2..41).map(|keysize| {
-        let chars = contents.chars()
-            .map(|c| c as u8)
-            .collect::<Vec<_>>();
 
-        let chunks = chars.chunks(keysize*2);
+        let chunks = cipher_text.chunks(keysize*2);
         let num_chunks = chunks.len();
 
         let dist = chunks.map(|chunk| {
@@ -166,7 +166,7 @@ fn challenge_6() {
     });
 
     // select the most likely key size
-    let mut keysizes = keysize_scores.iter()
+    let keysizes = keysize_scores.iter()
         .map(|&(a, _)| a)
         .skip(0)
         .take(3)
@@ -175,10 +175,7 @@ fn challenge_6() {
     // break the ciphertext into blocks of `keysize`
     let blocks = keysizes.iter()
         .map(|keysize| {
-            let chunks = contents.chars()
-                .map(|c| c as u8)
-                .collect::<Vec<_>>()
-                .chunks(*keysize)
+            let chunks = cipher_text.chunks(*keysize)
                 .fold(Vec::new() as Vec<Vec<u8>>, |mut acc, cs| {
                     let mut block = Vec::new();
                     block.extend_from_slice(cs);
@@ -207,23 +204,23 @@ fn challenge_6() {
             chunks.into_iter()
                 .filter_map(|bytes| {
                     let keys = detect_single_byte_xor(
-                        &bytes.iter().map(|c| *c as u8).collect::<Vec<_>>(),
+                        &bytes,
                         &ngram,
                         Some(&mut pool)
                     );
 
                     let keys = keys.iter()
                         .map(|&(c, _)| c)
-                        .collect::<Vec<char>>();
+                        .collect::<Vec<_>>();
 
                     keys.first().cloned()
                 })
-                .collect::<String>()
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
 
     let mut answers = keys.iter()
-        .map(|key| repeating_key_xor(&key, &contents))
+        .map(|key| repeating_key_xor(&key, &cipher_text))
         .map(|x| (x.clone(), ngram.score(&x)))
         .collect::<Vec<_>>();
 
@@ -232,9 +229,10 @@ fn challenge_6() {
     });
 
     let answers = answers.into_iter().map(|(x, _)| x).collect::<Vec<_>>();
+    let answer = answers.first().unwrap();
 
     assert_eq!(
-        answers.first().unwrap(),
+        &u8_vec_to_str(answer),
         &solution
     );
 }

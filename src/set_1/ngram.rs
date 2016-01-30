@@ -22,12 +22,18 @@ pub struct Ngram {
 /// Reference implementation:
 /// http://practicalcryptography.com/media/cryptanalysis/files/ngram_score_1.py
 impl Ngram {
-    pub fn score(&self, input: &str) -> f32 {
+    pub fn score(&self, input: &Vec<u8>) -> f32 {
         let mut score = 0f32;
 
         let plaintext = {
             let re=Regex::new(r"[^A-Z] ").unwrap();
-            re.replace_all(&input.to_ascii_uppercase(), "")
+            re.replace_all(
+                &input.into_iter()
+                    .map(|b| *b as char)
+                    .collect::<String>()
+                    .to_ascii_uppercase(),
+                ""
+            )
         };
 
         for word in plaintext.split(" ") {
