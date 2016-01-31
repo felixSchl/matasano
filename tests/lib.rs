@@ -136,8 +136,6 @@ fn challenge_6() {
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
     let cipher_text = unsafe_read_file("./fixtures/set_1_challenge_6.txt");
     let solution = unsafe_read_file("./fixtures/set_1_challenge_6_solution.txt");
-
-    // XXX: Should avoid making this a string first, just operate on u8s!
     let cipher_text = cipher_text.from_base64().unwrap();
 
     // calculate the scores for various key lengths
