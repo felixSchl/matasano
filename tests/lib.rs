@@ -65,6 +65,7 @@ fn challenge_3() {
 }
 
 #[test]
+#[ignore]
 fn challenge_4() {
     let ngram = Ngram::from_file("./resources/english_trigrams.txt");
     let mut pool = Pool::new(8);
@@ -124,6 +125,7 @@ fn unsafe_read_file(path: &str) -> String {
 }
 
 #[test]
+#[ignore]
 fn challenge_6() {
     assert_eq!(
         set_1::hamming_distance(
@@ -259,4 +261,35 @@ fn challenge_7() {
         &u8_vec_to_str(&p1.to_vec()),
         &solution
     );
+}
+
+#[test]
+fn challenge_8() {
+    let f = File::open("./fixtures/set_1_challenge_8.txt").unwrap();
+    let f = BufReader::new(f);
+
+    let candidates = f.lines().into_iter()
+        .map(|l| l.unwrap())
+        .map(|l| l.from_hex().unwrap())
+        .map(|l| {
+            let mut chunks = l.chunks(16)
+                .map(|cs| cs.to_vec())
+                .enumerate()
+                .map(|(i, cs)| {
+                    println!("Chunk # {}", i);
+                    for c in cs.iter() {
+                        print!("{:8b} |", c);
+                    }
+                    print!("\n");
+                    cs
+                })
+                .collect::<Vec<_>>();
+            let num_blocks = chunks.len();
+
+            chunks.dedup();
+            let num_unique_blocks = chunks.len();
+            println!("{}/{}", num_blocks, num_unique_blocks);
+            l
+        })
+        .collect::<Vec<Vec<u8>>>();
 }
